@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,11 @@ const firebaseOptionsWindows = FirebaseOptions(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Yatay dondurmeyi engelle (Sadece dikey mod)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
 
   // Initialize Firebase based on Platform
   if (Platform.isWindows) {
@@ -102,6 +108,7 @@ class PrizmaApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
       title: 'Prizma',
@@ -111,7 +118,7 @@ class PrizmaApp extends ConsumerWidget {
           seedColor: const Color(0xFF6200EE),
           brightness: Brightness.light,
         ),
-        pageTransitionsTheme: PageTransitionsTheme(
+        pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
             TargetPlatform.android: CupertinoPageTransitionsBuilder(),
             TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -125,7 +132,7 @@ class PrizmaApp extends ConsumerWidget {
           seedColor: const Color(0xFF6200EE),
           brightness: Brightness.dark,
         ),
-        pageTransitionsTheme: PageTransitionsTheme(
+        pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
             TargetPlatform.android: CupertinoPageTransitionsBuilder(),
             TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -133,7 +140,7 @@ class PrizmaApp extends ConsumerWidget {
           },
         ),
       ),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

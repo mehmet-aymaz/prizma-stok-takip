@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
 import 'database_service.dart';
 import '../models/product.dart';
 import '../models/price_history.dart';
@@ -87,6 +88,18 @@ class SyncService {
           final remoteData = change.doc.data();
           if (remoteData != null) {
             final String uuid = remoteData['uuid'];
+            // Clean up local image file if it exists
+            try {
+              final localProduct = await db.getProductByUuid(uuid);
+              if (localProduct != null && localProduct.localImagePath.isNotEmpty) {
+                final file = File(localProduct.localImagePath);
+                if (await file.exists()) {
+                  await file.delete();
+                }
+              }
+            } catch (e) {
+              debugPrint("Error deleting local image: $e");
+            }
             await db.isar.writeTxn(() async {
               await db.isar.products.filter().uuidEqualTo(uuid).deleteAll();
               await db.isar.priceHistorys.filter().productUuidEqualTo(uuid).deleteAll();
@@ -128,9 +141,15 @@ class SyncService {
       // Create local product
       final newProduct = Product.fromFirestore(remoteData);
       await db.saveProduct(newProduct);
+
+      // Download remote image if available
+      if (newProduct.remoteImageUrl != null && newProduct.remoteImageUrl!.isNotEmpty) {
+        _downloadAndSetLocalImage(newProduct);
+      }
     } else {
       // Conflict resolution: Last-Write-Wins
       if (remoteUpdatedAt.isAfter(localProduct.updatedAt)) {
+        final oldRemoteUrl = localProduct.remoteImageUrl;
         localProduct.name = remoteData['name'];
         localProduct.category = remoteData['category'];
         localProduct.purchasePrice = (remoteData['purchasePrice'] as num).toDouble();
@@ -140,7 +159,62 @@ class SyncService {
         localProduct.updatedBy = remoteData['updatedBy'];
         localProduct.syncStatus = SyncStatus.synced;
         await db.saveProduct(localProduct);
+
+        // Download remote image if it has changed or local file is missing
+        if (localProduct.remoteImageUrl != null &&
+            localProduct.remoteImageUrl!.isNotEmpty &&
+            (localProduct.remoteImageUrl != oldRemoteUrl ||
+             localProduct.localImagePath.isEmpty ||
+             !File(localProduct.localImagePath).existsSync())) {
+          _downloadAndSetLocalImage(localProduct);
+        }
+      } else {
+        // Even if local product is newer, if localImagePath is empty/invalid but remoteImageUrl is available, download it.
+        if (localProduct.remoteImageUrl != null &&
+            localProduct.remoteImageUrl!.isNotEmpty &&
+            (localProduct.localImagePath.isEmpty || !File(localProduct.localImagePath).existsSync())) {
+          _downloadAndSetLocalImage(localProduct);
+        }
       }
+    }
+  }
+
+  Future<void> _downloadAndSetLocalImage(Product product) async {
+    if (product.remoteImageUrl == null || product.remoteImageUrl!.isEmpty) return;
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory('${appDir.path}/images');
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+
+      // Determine local path
+      final localPath = '${imagesDir.path}/${product.uuid}.jpg';
+
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      
+      final request = await client.getUrl(Uri.parse(product.remoteImageUrl!));
+      final response = await request.close().timeout(const Duration(seconds: 15));
+      
+      if (response.statusCode == 200) {
+        final file = File(localPath);
+        await response.pipe(file.openWrite());
+
+        // Get fresh instance from DB to write the local path
+        final dbProduct = await db.getProductByUuid(product.uuid);
+        if (dbProduct != null) {
+          dbProduct.localImagePath = localPath;
+          await db.saveProduct(dbProduct);
+          debugPrint("Resim basariyla indirildi ve yerel yol guncellendi: $localPath");
+        }
+      } else {
+        debugPrint("Resim indirme basarisiz. Kod: ${response.statusCode}");
+      }
+      client.close();
+    } catch (e) {
+      debugPrint("Resim indirilirken hata: $e");
     }
   }
 
@@ -159,6 +233,38 @@ class SyncService {
 
     isSyncing.value = true;
     try {
+      // 0. Upload missing images for already synced products (e.g. if Storage was not configured before)
+      final missingImageProducts = await db.isar.products
+          .filter()
+          .localImagePathIsNotEmpty()
+          .and()
+          .remoteImageUrlIsNull()
+          .findAll();
+
+      for (var product in missingImageProducts) {
+        final file = File(product.localImagePath);
+        if (await file.exists()) {
+          try {
+            final storageRef = _storage.ref().child('products/${product.uuid}.jpg');
+            await storageRef.putFile(file).timeout(const Duration(seconds: 15));
+            final downloadUrl = await storageRef.getDownloadURL().timeout(const Duration(seconds: 5));
+
+            product.remoteImageUrl = downloadUrl;
+            await db.saveProduct(product);
+
+            // Update remoteImageUrl in Firestore
+            await _firestore
+                .collection('products')
+                .doc(product.uuid)
+                .update({'remoteImageUrl': downloadUrl})
+                .timeout(const Duration(seconds: 5));
+            debugPrint("Successfully uploaded missing image for product: ${product.uuid}");
+          } catch (storageError) {
+            debugPrint("Failed to upload missing image for ${product.uuid}: $storageError");
+          }
+        }
+      }
+
       // 1. Sync pending products (Local to Remote)
       final pendingProducts = await db.getPendingProducts();
       for (var product in pendingProducts) {
@@ -178,8 +284,9 @@ class SyncService {
           }
 
           // Save to Firestore
-          product.updatedBy = _auth.currentUser!.uid;
-          product.updatedAt = DateTime.now();
+          if (product.updatedBy.isEmpty || product.updatedBy == _auth.currentUser!.uid) {
+            product.updatedBy = _auth.currentUser!.displayName ?? _auth.currentUser!.email ?? 'Bilinmeyen Kullanıcı';
+          }
           await _firestore
               .collection('products')
               .doc(product.uuid)
@@ -187,7 +294,12 @@ class SyncService {
               .timeout(const Duration(seconds: 5));
 
           // Update local sync status
-          product.syncStatus = SyncStatus.synced;
+          // If we had a local image to upload, but remoteImageUrl is still null, we keep it as pending so it retries.
+          if (product.localImagePath.isNotEmpty && product.remoteImageUrl == null) {
+            product.syncStatus = SyncStatus.pending;
+          } else {
+            product.syncStatus = SyncStatus.synced;
+          }
           await db.saveProduct(product);
         } catch (productError) {
           debugPrint("Product Sync Error for ${product.uuid}: $productError");

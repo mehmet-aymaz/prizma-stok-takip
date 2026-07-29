@@ -2,7 +2,7 @@
     <application
         android:label="Prizma"
         android:name="${applicationName}"
-        android:icon="@mipmap/prizma-icon">
+        android:icon="@mipmap/prizma_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"

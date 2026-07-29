@@ -120,13 +120,27 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Logo / Icon
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: colorScheme.primaryContainer,
-                        child: Icon(
-                          Icons.dashboard_customize_rounded,
-                          size: 40,
-                          color: colorScheme.primary,
+                      Center(
+                        child: Container(
+                          height: 96,
+                          width: 96,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.primary.withValues(alpha: 0.2),
+                                blurRadius: 15,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(48),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),

@@ -43,8 +43,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 70, // Compress image
-        maxWidth: 800,
+        imageQuality: 50, // Agresif sikistirma ile boyutu dusuruyoruz
+        maxWidth: 500,
+        maxHeight: 500,
       );
 
       if (pickedFile != null) {
@@ -99,12 +100,6 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_imageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen ürün fotoğrafı ekleyin.')),
-      );
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -115,25 +110,29 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       final syncService = ref.read(syncServiceProvider);
       final user = FirebaseAuth.instance.currentUser;
 
-      // 1. Copy image to app directory for permanent offline access
-      final appDir = await getApplicationDocumentsDirectory();
-      final imagesDir = Directory('${appDir.path}/images');
-      if (!await imagesDir.exists()) {
-        await imagesDir.create(recursive: true);
-      }
-
       final productUuid = const Uuid().v4();
-      final fileExtension = _imageFile!.path.split('.').last;
-      final localImagePath = '${imagesDir.path}/$productUuid.$fileExtension';
-      await _imageFile!.copy(localImagePath);
+      String localImagePath = "";
+
+      if (_imageFile != null) {
+        // Copy image to app directory for permanent offline access
+        final appDir = await getApplicationDocumentsDirectory();
+        final imagesDir = Directory('${appDir.path}/images');
+        if (!await imagesDir.exists()) {
+          await imagesDir.create(recursive: true);
+        }
+
+        final fileExtension = _imageFile!.path.split('.').last;
+        localImagePath = '${imagesDir.path}/$productUuid.$fileExtension';
+        await _imageFile!.copy(localImagePath);
+      }
 
       // 2. Create Product
       final product = Product()
         ..uuid = productUuid
         ..name = _nameController.text.trim()
-        ..category = _selectedCategory!
-        ..purchasePrice = double.parse(_purchasePriceController.text)
-        ..salesPrice = double.parse(_salesPriceController.text)
+        ..category = _selectedCategory ?? 'Diğer Elektrik Malzemeleri'
+        ..purchasePrice = double.tryParse(_purchasePriceController.text) ?? 0.0
+        ..salesPrice = double.tryParse(_salesPriceController.text) ?? 0.0
         ..localImagePath = localImagePath
         ..createdAt = DateTime.now()
         ..updatedAt = DateTime.now()
@@ -239,7 +238,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                       decoration: InputDecoration(
                         labelText: 'Ürün Adı',
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                       ),
                       validator: (value) {
@@ -251,30 +250,31 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                     ),
                     const SizedBox(height: 16),
                     // Category Dropdown
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedCategory,
+                    DropdownButtonFormField<String?>(
+                      value: _selectedCategory,
+                      borderRadius: BorderRadius.circular(20), // Pop-up rounded corners
                       decoration: InputDecoration(
-                        labelText: 'Kategori',
+                        labelText: 'Kategori (Opsiyonel)',
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                       ),
-                      items: categories.map((category) {
-                        return DropdownMenuItem(
-                          value: category,
-                          child: Text(category),
-                        );
-                      }).toList(),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('Kategori Seçilmedi (Varsayılan: Diğer)'),
+                        ),
+                        ...categories.map((category) {
+                          return DropdownMenuItem<String?>(
+                            value: category,
+                            child: Text(category),
+                          );
+                        }),
+                      ],
                       onChanged: (value) {
                         setState(() {
                           _selectedCategory = value;
                         });
-                      },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Kategori seçimi zorunludur.';
-                        }
-                        return null;
                       },
                     ),
                     const SizedBox(height: 16),
@@ -286,12 +286,12 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                         labelText: 'Alış Fiyatı (₺)',
                         prefixText: '₺ ',
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Alış fiyatı boş bırakılamaz.';
+                          return null;
                         }
                         if (double.tryParse(value) == null) {
                           return 'Lütfen geçerli bir sayı girin.';
@@ -308,12 +308,12 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                         labelText: 'Satış Fiyatı (₺)',
                         prefixText: '₺ ',
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Satış fiyatı boş bırakılamaz.';
+                          return null;
                         }
                         if (double.tryParse(value) == null) {
                           return 'Lütfen geçerli bir sayı girin.';

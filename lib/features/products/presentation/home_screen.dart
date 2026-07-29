@@ -8,6 +8,7 @@ import '../../../core/models/product.dart';
 import '../../../core/services/database_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/services/settings_service.dart';
+import '../../../core/services/update_service.dart';
 
 enum ProductSortType {
   nameAZ,
@@ -72,6 +73,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkDisplayName();
+      UpdateService.checkForUpdates(context);
     });
   }
 
@@ -141,13 +143,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final productsAsync = ref.watch(filteredProductsProvider);
     final categories = ref.watch(categoryListProvider);
 
-    return Scaffold(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.dashboard_customize_rounded),
-            const SizedBox(width: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/logo.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
             Text(
               'Prizma',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -240,139 +252,199 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           // Category & Sorting Dropdowns (XUI Style)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: Row(
-              children: [
-                // Category Dropdown
-                Expanded(
-                  child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  // Category Dropdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(30), // Oval/Pill Shape
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        width: 1,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: selectedCategory,
-                      isExpanded: true,
-                      borderRadius: BorderRadius.circular(20),
-                      dropdownColor: theme.cardColor,
-                      decoration: InputDecoration(
-                        labelText: 'Kategori',
-                        filled: true,
-                        fillColor: theme.cardColor,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: selectedCategory,
+                        isDense: true,
+                        icon: Icon(Icons.arrow_drop_down_rounded, color: colorScheme.primary, size: 28),
+                        borderRadius: BorderRadius.circular(20),
+                        dropdownColor: theme.cardColor,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5), width: 1.5),
-                        ),
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text(
-                            'Tüm Kategoriler',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        ...categories.map((c) {
-                          return DropdownMenuItem<String?>(
-                            value: c,
-                            child: Text(
-                              c,
-                              overflow: TextOverflow.ellipsis,
+                        // Kapali iken butonun genisligini sinirlar ve dikeyde ortalar
+                        selectedItemBuilder: (BuildContext context) {
+                          return [
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Tüm Kategoriler',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
-                          );
-                        }),
-                      ],
-                      onChanged: (val) {
-                        ref.read(selectedCategoryProvider.notifier).state = val;
-                      },
+                            ...categories.map((c) {
+                              return SizedBox(
+                                width: 100,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    c,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ];
+                        },
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Tüm Kategoriler'),
+                          ),
+                          ...categories.map((c) {
+                            return DropdownMenuItem<String?>(
+                              value: c,
+                              child: Text(c),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          ref.read(selectedCategoryProvider.notifier).state = val;
+                        },
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                // Sorting Dropdown
-                Expanded(
-                  child: Container(
+                  const SizedBox(width: 10),
+                  // Sorting Dropdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(30), // Oval/Pill Shape
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        width: 1,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    child: DropdownButtonFormField<ProductSortType>(
-                      initialValue: sortBy,
-                      isExpanded: true,
-                      borderRadius: BorderRadius.circular(20),
-                      dropdownColor: theme.cardColor,
-                      decoration: InputDecoration(
-                        labelText: 'Sıralama',
-                        filled: true,
-                        fillColor: theme.cardColor,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<ProductSortType>(
+                        value: sortBy,
+                        isDense: true,
+                        icon: Icon(Icons.arrow_drop_down_rounded, color: colorScheme.primary, size: 28),
+                        borderRadius: BorderRadius.circular(20),
+                        dropdownColor: theme.cardColor,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5), width: 1.5),
-                        ),
+                        // Kapali iken butonun genisligini sinirlar ve dikeyde ortalar
+                        selectedItemBuilder: (BuildContext context) {
+                          return [
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('En Son Eklenen', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('İlk Eklenen', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('A-Z (İsim)', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('Z-A (İsim)', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('En Yüksek Fiyat', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 100,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text('En Düşük Fiyat', overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                          ];
+                        },
+                        items: const [
+                          DropdownMenuItem(
+                            value: ProductSortType.latestAdded,
+                            child: Text('En Son Eklenen'),
+                          ),
+                          DropdownMenuItem(
+                            value: ProductSortType.oldestAdded,
+                            child: Text('İlk Eklenen'),
+                          ),
+                          DropdownMenuItem(
+                            value: ProductSortType.nameAZ,
+                            child: Text('A-Z (İsim)'),
+                          ),
+                          DropdownMenuItem(
+                            value: ProductSortType.nameZA,
+                            child: Text('Z-A (İsim)'),
+                          ),
+                          DropdownMenuItem(
+                            value: ProductSortType.priceHighest,
+                            child: Text('En Yüksek Fiyat'),
+                          ),
+                          DropdownMenuItem(
+                            value: ProductSortType.priceLowest,
+                            child: Text('En Düşük Fiyat'),
+                          ),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            ref.read(sortByProvider.notifier).state = val;
+                          }
+                        },
                       ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: ProductSortType.latestAdded,
-                          child: Text('En Son Eklenen', overflow: TextOverflow.ellipsis),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductSortType.oldestAdded,
-                          child: Text('İlk Eklenen', overflow: TextOverflow.ellipsis),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductSortType.nameAZ,
-                          child: Text('A-Z (İsim)', overflow: TextOverflow.ellipsis),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductSortType.nameZA,
-                          child: Text('Z-A (İsim)', overflow: TextOverflow.ellipsis),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductSortType.priceHighest,
-                          child: Text('En Yüksek Fiyat', overflow: TextOverflow.ellipsis),
-                        ),
-                        DropdownMenuItem(
-                          value: ProductSortType.priceLowest,
-                          child: Text('En Düşük Fiyat', overflow: TextOverflow.ellipsis),
-                        ),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          ref.read(sortByProvider.notifier).state = val;
-                        }
-                      },
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -430,6 +502,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onPressed: () => context.push('/add-product'),
         icon: const Icon(Icons.add_rounded),
         label: const Text('Ürün Ekle'),
+      ),
       ),
     );
   }

@@ -65,8 +65,9 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 70,
-        maxWidth: 800,
+        imageQuality: 50, // Agresif sikistirma ile boyutu dusuruyoruz
+        maxWidth: 500,
+        maxHeight: 500,
       );
 
       if (pickedFile != null) {
@@ -130,8 +131,8 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
       final syncService = ref.read(syncServiceProvider);
       final user = FirebaseAuth.instance.currentUser;
 
-      final newPurchasePrice = double.parse(_purchasePriceController.text);
-      final newSalesPrice = double.parse(_salesPriceController.text);
+      final newPurchasePrice = double.tryParse(_purchasePriceController.text) ?? 0.0;
+      final newSalesPrice = double.tryParse(_salesPriceController.text) ?? 0.0;
       final pricesChanged = newPurchasePrice != _originalProduct!.purchasePrice || newSalesPrice != _originalProduct!.salesPrice;
 
       // 1. Process image if changed
@@ -158,7 +159,7 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
 
       // 3. Update Product
       _originalProduct!.name = _nameController.text.trim();
-      _originalProduct!.category = _selectedCategory!;
+      _originalProduct!.category = _selectedCategory ?? 'Diğer Elektrik Malzemeleri';
       _originalProduct!.purchasePrice = newPurchasePrice;
       _originalProduct!.salesPrice = newSalesPrice;
       _originalProduct!.localImagePath = localImagePath;
@@ -294,7 +295,7 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                           decoration: InputDecoration(
                             labelText: 'Ürün Adı',
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(24),
                             ),
                           ),
                           validator: (value) {
@@ -306,30 +307,31 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                         ),
                         const SizedBox(height: 16),
                         // Category Dropdown
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedCategory,
+                        DropdownButtonFormField<String?>(
+                          value: _selectedCategory,
+                          borderRadius: BorderRadius.circular(20), // Pop-up rounded corners
                           decoration: InputDecoration(
-                            labelText: 'Kategori',
+                            labelText: 'Kategori (Opsiyonel)',
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(24),
                             ),
                           ),
-                          items: categories.map((category) {
-                            return DropdownMenuItem(
-                              value: category,
-                              child: Text(category),
-                            );
-                          }).toList(),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Kategori Seçilmedi (Varsayılan: Diğer)'),
+                            ),
+                            ...categories.map((category) {
+                              return DropdownMenuItem<String?>(
+                                value: category,
+                                child: Text(category),
+                              );
+                            }),
+                          ],
                           onChanged: (value) {
                             setState(() {
                               _selectedCategory = value;
                             });
-                          },
-                          validator: (value) {
-                            if (value == null) {
-                              return 'Kategori seçimi zorunludur.';
-                            }
-                            return null;
                           },
                         ),
                         const SizedBox(height: 16),
@@ -341,12 +343,12 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                             labelText: 'Alış Fiyatı (₺)',
                             prefixText: '₺ ',
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(24),
                             ),
                           ),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'Alış fiyatı boş bırakılamaz.';
+                              return null;
                             }
                             if (double.tryParse(value) == null) {
                               return 'Lütfen geçerli bir sayı girin.';
@@ -363,12 +365,12 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                             labelText: 'Satış Fiyatı (₺)',
                             prefixText: '₺ ',
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(24),
                             ),
                           ),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'Satış fiyatı boş bırakılamaz.';
+                              return null;
                             }
                             if (double.tryParse(value) == null) {
                               return 'Lütfen geçerli bir sayı girin.';
