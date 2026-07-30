@@ -51,17 +51,39 @@ class ProductDetailScreen extends ConsumerWidget {
                 final db = ref.read(databaseServiceProvider);
                 final syncService = ref.read(syncServiceProvider);
 
+                // 1. Delete local image file if exists
+                try {
+                  final product = await db.getProductByUuid(productUuid);
+                  if (product != null && product.localImagePath.isNotEmpty) {
+                    final file = File(product.localImagePath);
+                    if (await file.exists()) {
+                      await file.delete();
+                    }
+                  }
+                } catch (e) {
+                  debugPrint("Local image file delete error: $e");
+                }
+
+                // 2. Delete from Isar DB
                 await db.isar.writeTxn(() async {
                   await db.isar.products.filter().uuidEqualTo(productUuid).deleteAll();
                   await db.isar.priceHistorys.filter().productUuidEqualTo(productUuid).deleteAll();
                 });
 
+                // 3. Delete from Firebase (Firestore & Storage)
                 try {
+                  // Firestore will delete locally and queue for remote sync if offline
+                  await FirebaseFirestore.instance.collection('products').doc(productUuid).delete();
+                  
                   if (syncService.isConnected.value) {
-                    await FirebaseFirestore.instance.collection('products').doc(productUuid).delete();
+                    try {
+                      await FirebaseStorage.instance.ref().child('products/$productUuid.jpg').delete();
+                    } catch (storageErr) {
+                      debugPrint("Storage image delete error: $storageErr");
+                    }
                   }
                 } catch (e) {
-                  debugPrint("Firestore delete error: $e");
+                  debugPrint("Firestore/Storage delete error: $e");
                 }
 
                 if (context.mounted) {
